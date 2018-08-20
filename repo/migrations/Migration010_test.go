@@ -13,14 +13,6 @@ import (
 const testmigration010Password = "letmein"
 
 var (
-	caseIdsToCoinSet = map[string]struct {
-		paymentCoion string
-		coinType     string
-	}{
-		"1": {"TBC", "TETH"},
-		"2": {"TBC", "TETH"},
-	}
-
 	testmigration010SchemaStmts = []string{
 		"DROP TABLE IF EXISTS cases;",
 		"DROP TABLE IF EXISTS sales;",
@@ -28,16 +20,6 @@ var (
 		"create table cases (caseID text primary key not null, buyerContract blob, vendorContract blob, buyerValidationErrors blob, vendorValidationErrors blob, buyerPayoutAddress text, vendorPayoutAddress text, buyerOutpoints blob, vendorOutpoints blob, state integer, read integer, timestamp integer, buyerOpened integer, claim text, disputeResolution blob, lastDisputeExpiryNotifiedAt integer not null default 0, coinType not null default '', paymentCoin not null default '');",
 		"create table sales (orderID text primary key not null, contract blob, state integer, read integer, timestamp integer, total integer, thumbnail text, buyerID text, buyerHandle text, title text, shippingName text, shippingAddress text, paymentAddr text, funded integer, transactions blob, needsSync integer, lastDisputeTimeoutNotifiedAt integer not null default 0, coinType not null default '', paymentCoin not null default '');",
 		"create table purchases (orderID text primary key not null, contract blob, state integer, read integer, timestamp integer, total integer, thumbnail text, vendorID text, vendorHandle text, title text, shippingName text, shippingAddress text, paymentAddr text, funded integer, transactions blob, lastDisputeTimeoutNotifiedAt integer not null default 0, lastDisputeExpiryNotifiedAt integer not null default 0, disputedAt integer not null default 0, coinType not null default '', paymentCoin not null default '');",
-	}
-
-	testmigration010FixtureStmts = []string{
-		"INSERT INTO cases(caseID, buyerContract, paymentCoin, coinType) VALUES('1', ?, 'TBTC', 'TETH');",
-		"INSERT INTO sales(orderID, contract, paymentCoin, coinType) VALUES('1', ?, 'TBTC', 'TETH');",
-		"INSERT INTO purchases(orderID, contract, paymentCoin, coinType) VALUES('1', ?, 'TBTC', 'TETH');",
-
-		"INSERT INTO cases(caseID, buyerContract) VALUES('2', ?);",
-		"INSERT INTO sales(orderID, contract) VALUES('2', ?);",
-		"INSERT INTO purchases(orderID, contract) VALUES('2', ?);",
 	}
 )
 
