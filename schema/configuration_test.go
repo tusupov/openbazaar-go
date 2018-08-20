@@ -281,6 +281,10 @@ func TestExtendConfigFile(t *testing.T) {
 	}
 }
 
+func extendConfigFile(r repo.Repo, key string, value interface{}) error {
+	return r.SetConfigKey(key, value)
+}
+
 func configFixture() []byte {
 	return []byte(`{
   "API": {
