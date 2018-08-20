@@ -30,12 +30,12 @@ func GenerateTempPath() string {
 // application data can be stored and returns a string representing the location
 // where OpenBazaar prefers to store its schema on the filesystem relative to that
 // path. If the path cannot be transformed, an error will be returned
-func OpenbazaarPathTransform(basePath string, testModeEnabled bool) (path string, err error) {
-	path, err = homedir.Expand(filepath.Join(basePath, directoryName(testModeEnabled)))
+func OpenbazaarPathTransform(basePath string, testModeEnabled bool) (string, error) {
+	path, err := homedir.Expand(filepath.Join(basePath, directoryName(testModeEnabled)))
 	if err == nil {
 		path = filepath.Clean(path)
 	}
-	return
+	return path, err
 }
 func directoryName(isTestnet bool) (directoryName string) {
 	if runtime.GOOS == "linux" {
@@ -47,5 +47,5 @@ func directoryName(isTestnet bool) (directoryName string) {
 	if isTestnet {
 		directoryName += "-testnet"
 	}
-	return
+	return directoryName
 }
