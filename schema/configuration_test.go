@@ -4,9 +4,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ipfs/go-ipfs/repo/fsrepo"
 	"io/ioutil"
 	"time"
+
+	"github.com/ipfs/go-ipfs/repo"
+	"github.com/ipfs/go-ipfs/repo/fsrepo"
 )
 
 func TestGetApiConfig(t *testing.T) {
