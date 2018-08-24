@@ -94,25 +94,28 @@ func (p *PubsubPublisher) Publish(ctx context.Context, topic string, data []byte
 
 func (r *PubsubSubscriber) Subscribe(ctx context.Context, topic string) (chan []byte, error) {
 	r.mx.Lock()
-	// see if we already have a pubsub subscription; if not, subscribe
-	_, ok := r.subs[topic]
+	defer r.mx.Unlock()
+
 	resp := make(chan []byte)
-	if !ok {
-		sub, err := r.ps.Subscribe(topic)
-		if err != nil {
-			r.mx.Unlock()
-			return nil, err
-		}
 
-		log.Debugf("PubsubSubscribe: subscribed to %s", topic)
-
-		r.subs[topic] = sub
-
-		ctx, cancel := context.WithCancel(r.ctx)
-		go r.handleSubscription(sub, topic, resp, cancel)
-		go bootstrapPubsub(ctx, r.cr, r.host, topic)
+	// see if we already have a pubsub subscription; if not, subscribe
+	if _, ok := r.subs[topic]; ok {
+		return resp, nil
 	}
-	r.mx.Unlock()
+
+	sub, err := r.ps.Subscribe(topic)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Debugf("PubsubSubscribe: subscribed to %s", topic)
+
+	r.subs[topic] = sub
+
+	ctx, cancel := context.WithCancel(r.ctx)
+	go r.handleSubscription(sub, topic, resp, cancel)
+	go bootstrapPubsub(ctx, r.cr, r.host, topic)
+
 	return resp, nil
 }
 
