@@ -230,6 +230,10 @@ func SanitizedResponseM(w http.ResponseWriter, response string, m proto.Message)
 	fmt.Fprint(w, string(out))
 }
 
+func isNullJSON(jsonBytes []byte) bool {
+	return string(jsonBytes) == "null"
+}
+
 func (i *jsonAPIHandler) POSTProfile(w http.ResponseWriter, r *http.Request) {
 
 	// If the profile is already set tell them to use PUT
@@ -1005,7 +1009,7 @@ func (i *jsonAPIHandler) GETClosestPeers(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	ret, _ := json.MarshalIndent(peerIds, "", "    ")
-	if string(ret) == "null" {
+	if isNullJSON(ret) {
 		ret = []byte("[]")
 	}
 	SanitizedResponse(w, string(ret))
@@ -1064,7 +1068,7 @@ func (i *jsonAPIHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if string(ret) == "null" {
+		if isNullJSON(ret) {
 			ret = []byte("[]")
 		}
 		SanitizedResponse(w, string(ret))
@@ -1095,7 +1099,7 @@ func (i *jsonAPIHandler) GETFollowers(w http.ResponseWriter, r *http.Request) {
 			ErrorResponse(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if string(ret) == "null" {
+		if isNullJSON(ret) {
 			ret = []byte("[]")
 		}
 		w.Header().Set("Cache-Control", "public, max-age=600, immutable")
@@ -1123,7 +1127,7 @@ func (i *jsonAPIHandler) GETFollowing(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ret, _ := json.MarshalIndent(followers, "", "    ")
-		if string(ret) == "null" {
+		if isNullJSON(ret) {
 			ret = []byte("[]")
 		}
 		SanitizedResponse(w, string(ret))
@@ -1183,7 +1187,7 @@ func (i *jsonAPIHandler) GETInventory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if string(ret) == "null" {
+		if isNullJSON(ret) {
 			fmt.Fprint(w, `[]`)
 			return
 		}
@@ -2349,7 +2353,7 @@ func (i *jsonAPIHandler) GETChatMessages(w http.ResponseWriter, r *http.Request)
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if string(ret) == "null" {
+	if isNullJSON(ret) {
 		ret = []byte("[]")
 	}
 	SanitizedResponse(w, string(ret))
@@ -2362,7 +2366,7 @@ func (i *jsonAPIHandler) GETChatConversations(w http.ResponseWriter, r *http.Req
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if string(ret) == "null" {
+	if isNullJSON(ret) {
 		ret = []byte("[]")
 	}
 	SanitizedResponse(w, string(ret))
@@ -2788,7 +2792,7 @@ func (i *jsonAPIHandler) GETPurchases(w http.ResponseWriter, r *http.Request) {
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if string(ret) == "null" {
+	if isNullJSON(ret) {
 		ret = []byte("[]")
 	}
 	SanitizedResponse(w, string(ret))
@@ -2823,7 +2827,7 @@ func (i *jsonAPIHandler) GETSales(w http.ResponseWriter, r *http.Request) {
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if string(ret) == "null" {
+	if isNullJSON(ret) {
 		ret = []byte("[]")
 	}
 	SanitizedResponse(w, string(ret))
@@ -2857,7 +2861,7 @@ func (i *jsonAPIHandler) GETCases(w http.ResponseWriter, r *http.Request) {
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if string(ret) == "null" {
+	if isNullJSON(ret) {
 		ret = []byte("[]")
 	}
 	SanitizedResponse(w, string(ret))
@@ -2893,7 +2897,7 @@ func (i *jsonAPIHandler) POSTPurchases(w http.ResponseWriter, r *http.Request) {
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if string(ret) == "null" {
+	if isNullJSON(ret) {
 		ret = []byte("[]")
 	}
 	SanitizedResponse(w, string(ret))
@@ -2930,7 +2934,7 @@ func (i *jsonAPIHandler) POSTSales(w http.ResponseWriter, r *http.Request) {
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if string(ret) == "null" {
+	if isNullJSON(ret) {
 		ret = []byte("[]")
 	}
 	SanitizedResponse(w, string(ret))
@@ -2966,7 +2970,7 @@ func (i *jsonAPIHandler) POSTCases(w http.ResponseWriter, r *http.Request) {
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if string(ret) == "null" {
+	if isNullJSON(ret) {
 		ret = []byte("[]")
 	}
 	SanitizedResponse(w, string(ret))
