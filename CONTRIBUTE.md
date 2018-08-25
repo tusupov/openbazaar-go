@@ -7,7 +7,7 @@ OpenBazaar is an open source project. We love contributions! This document outli
 Issues should be used primarily for bug reports and directly actionable features. It's OK if you open an issue to ask a question or to start a discussion, however don't take offense if the issue is closed after a few days. General discussion of the protocol is probably better fleshed out in [slack](https://openbazaar-slackin-drwasho.herokuapp.com/).
 
 ## Go Guidelines
-You must run `gofmt` before each commit. Travis will fail if you do not run it. Most IDEs have the ability to set `gofmt` to run on save or at specified times.
+You must run `gofmt -s` before each commit. Travis will fail if you do not run it. Most IDEs have the ability to set `gofmt -s` to run on save or at specified times.
 
 All commits are checked with [golangci-lint](https://github.com/golangci/golangci-lint) using the [.golangci.yml](.golangci.yml) config in the repo.
 
