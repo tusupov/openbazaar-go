@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"errors"
+
 	"github.com/OpenBazaar/openbazaar-go/core"
 	"github.com/OpenBazaar/openbazaar-go/repo"
 )
