@@ -1,6 +1,6 @@
 run:
   skip-dirs:
-    - vendor
+    - \.\./.*
     - pb
 
 issues:
