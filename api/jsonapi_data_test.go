@@ -297,7 +297,7 @@ const moderatorValidJSON = `{
 // Wallet
 //
 
-const walletMneumonicJSONResponse = `{"mnemonic": "correct horse battery staple"}`
+const walletMnemonicJSONResponse = `{"mnemonic": "correct horse battery staple"}`
 
 const walletAddressJSONResponse = `{"address": "moLsBry5Dk8AN3QT3i1oxZdwD12MYRfTL5"}`
 
