@@ -78,10 +78,7 @@ type apiTest struct {
 // setupAction is used to change state before and after a set of []apiTest
 type setupAction func(*Gateway, *test.Repository) error
 
-// apiTests is a slice of apiTest
-type apiTests []apiTest
-
-func runAPITests(t *testing.T, tests apiTests) {
+func runAPITests(t *testing.T, tests []apiTest) {
 	gateway, _, cleanup := setupAPITests(t)
 	defer cleanup()
 
@@ -90,7 +87,7 @@ func runAPITests(t *testing.T, tests apiTests) {
 	}
 }
 
-func runAPITestsWithSetup(t *testing.T, tests apiTests, runBefore, runAfter setupAction) {
+func runAPITestsWithSetup(t *testing.T, tests []apiTest, runBefore, runAfter setupAction) {
 	gateway, repository, cleanup := setupAPITests(t)
 	defer cleanup()
 
