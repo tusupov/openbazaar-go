@@ -193,7 +193,6 @@ func ErrorResponse(w http.ResponseWriter, errorCode int, reason string) {
 	err := ApiError{false, reason}
 	resp, _ := json.MarshalIndent(err, "", "    ")
 	w.WriteHeader(errorCode)
-	fmt.Println(string(resp))
 	fmt.Fprint(w, string(resp))
 }
 
@@ -523,7 +522,6 @@ func (i *jsonAPIHandler) POSTListing(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		fmt.Println("!!!!!!!!!!!!!!!!!!!!!")
 		ErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
