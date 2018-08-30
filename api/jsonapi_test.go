@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 
@@ -14,27 +13,6 @@ import (
 	"github.com/OpenBazaar/openbazaar-go/test"
 	"github.com/OpenBazaar/openbazaar-go/test/factory"
 )
-
-func TestMain(m *testing.M) {
-	// Create a test server
-	// gateway, err := newTestGateway()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// go func() {
-	// 	err = gateway.Serve()
-	// 	if err != nil {
-	// 		log.Fatal(err)
-	// 	}
-	// 	gateway.Close()
-	// }()
-
-	// Run tests
-	retCode := m.Run()
-
-	os.Exit(retCode)
-}
 
 func TestSettings(t *testing.T) {
 	t.Parallel()
