@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
@@ -33,31 +34,46 @@ var testHTTPClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-// newTestGateway starts a new API gateway listening on the default test interface
-func newTestGateway() (*Gateway, error) {
-	// Create a test node, cookie, and config
-	node, err := test.NewNode()
+// setupAPITests starts a new API gateway listening on the default test interface
+func setupAPITests(t *testing.T) (*Gateway, *test.Repository, func()) {
+	// Create test repo
+	repository, err := test.NewRepository()
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
+	}
+
+	// Create a test node, cookie, and config
+	node, err := test.NewNode(repository)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	apiConfig, err := test.NewAPIConfig()
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
 
-	// Create an address to bind the API to
-	addr, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/9191")
+	addr, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/0")
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
 
 	listener, err := manet.Listen(addr)
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
 
-	return NewGateway(node, *test.GetAuthCookie(), listener.NetListener(), *apiConfig, logging.NewLogBackend(os.Stdout, "", 0))
+	gateway, err := NewGateway(node, *test.GetAuthCookie(), listener.NetListener(), *apiConfig, logging.NewLogBackend(os.Stdout, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return gateway, repository, func() {
+		err := repository.Delete()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // apiTest is a test case to be run against the api blackbox
@@ -71,69 +87,84 @@ type apiTest struct {
 }
 
 // setupAction is used to change state before and after a set of []apiTest
-type setupAction func(*test.Repository) error
+type setupAction func(*Gateway, *test.Repository) error
 
 // apiTests is a slice of apiTest
 type apiTests []apiTest
 
 func runAPITests(t *testing.T, tests apiTests) {
-	_, err := test.ResetRepository()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// _, err := test.ResetRepository()
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	gateway, _, cleanup := setupAPITests(t)
+	defer cleanup()
 
 	for _, jsonAPITest := range tests {
-		executeAPITest(t, jsonAPITest)
+		executeAPITest(t, gateway.handler, jsonAPITest)
 	}
 }
 
 func runAPITestsWithSetup(t *testing.T, tests apiTests, runBefore, runAfter setupAction) {
-	repository, err := test.ResetRepository()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// repository, err := test.ResetRepository()
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+
+	gateway, repository, cleanup := setupAPITests(t)
+	defer cleanup()
 
 	if runBefore != nil {
-		if err := runBefore(repository); err != nil {
+		if err := runBefore(gateway, repository); err != nil {
 			t.Fatal("runBefore:", err)
 		}
 	}
 
 	for _, jsonAPITest := range tests {
-		executeAPITest(t, jsonAPITest)
+		executeAPITest(t, gateway.handler, jsonAPITest)
 	}
 
 	if runAfter != nil {
-		if err := runAfter(repository); err != nil {
+		if err := runAfter(gateway, repository); err != nil {
 			t.Fatal("runAfter:", err)
 		}
 	}
 }
 
 func runAPITest(t *testing.T, subject apiTest) {
-	_, err := test.ResetRepository()
-	if err != nil {
-		t.Fatal(err)
-	}
-	executeAPITest(t, subject)
+	// _, err := test.ResetRepository()
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	gateway, _, cleanup := setupAPITests(t)
+	defer cleanup()
+	executeAPITest(t, gateway.handler, subject)
 }
 
 // executeAPITest executes the given test against the blackbox
-func executeAPITest(t *testing.T, test apiTest) {
+func executeAPITest(t *testing.T, mux http.Handler, test apiTest) {
 	// Make the request
 	req, err := buildRequest(test.method, test.path, test.requestBody)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := testHTTPClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	resp := httptest.NewRecorder()
+	// mux, ok := l.(http.ServeMux)
+	// if !ok {
+	// 	t.Fatal("blah")
+	// }
+	mux.ServeHTTP(resp, req)
+
+	// resp, err := testHTTPClient.Do(req)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
 	// Ensure correct status code
-	if resp.StatusCode != test.expectedResponseCode {
+	if resp.Code != test.expectedResponseCode {
 		b, _ := ioutil.ReadAll(resp.Body)
 		t.Error(test.method, test.path, string(b))
-		t.Errorf("Wanted status %d, got %d", test.expectedResponseCode, resp.StatusCode)
+		t.Errorf("Wanted status %d, got %d", test.expectedResponseCode, resp.Code)
 		return
 	}
 
@@ -142,7 +173,6 @@ func executeAPITest(t *testing.T, test apiTest) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
 
 	// Parse response as JSON
 	var responseJSON interface{}
@@ -170,7 +200,7 @@ func executeAPITest(t *testing.T, test apiTest) {
 // buildRequest issues an http request directly to the blackbox handler
 func buildRequest(method string, path string, body string) (*http.Request, error) {
 	// Create a JSON request to the given endpoint
-	req, err := http.NewRequest(method, testURIRoot+path, bytes.NewBufferString(body))
+	req, err := http.NewRequest(method, path, bytes.NewBufferString(body))
 	if err != nil {
 		return nil, err
 	}
@@ -187,16 +217,16 @@ func errorResponseJSON(err error) string {
 	return `{"success": false, "reason": "` + err.Error() + `"}`
 }
 
-func httpGet(endpoint string) ([]byte, error) {
+func httpGet(gateway *Gateway, endpoint string) ([]byte, error) {
 	req, err := buildRequest("GET", endpoint, "")
 	if err != nil {
 		return nil, err
 	}
-	resp, err := testHTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != 200 {
+	resp := httptest.NewRecorder()
+
+	gateway.handler.ServeHTTP(resp, req)
+
+	if resp.Code != 200 {
 		return nil, err
 	}
 	return ioutil.ReadAll(resp.Body)

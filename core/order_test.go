@@ -11,10 +11,18 @@ import (
 )
 
 func TestOpenBazaarNode_CalculateOrderTotal(t *testing.T) {
-	node, err := test.NewNode()
+	repository, err := test.NewRepository()
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
+
+	defer repository.Delete()
+
+	node, err := test.NewNode(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	contract := &pb.RicardianContract{
 		VendorListings: []*pb.Listing{{
 			Metadata: &pb.Listing_Metadata{
