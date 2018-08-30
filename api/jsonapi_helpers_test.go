@@ -2,8 +2,12 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/OpenBazaar/jsonpb"
@@ -21,45 +25,38 @@ import (
 // setupAction is used to change state before and after a set of []apiTest
 type setupAction func(*test.Repository) error
 
-type checkFn func(t *testing.T, respBody []byte)
+// checkFn checks an API response for correctness
+type checkFn func(t *testing.T, resp *httptest.ResponseRecorder)
 
 // apiTest is a test case to be run against the api blackbox
 type apiTest struct {
-	method      string
-	path        string
-	requestBody string
-
-	expectedResponseCode int
-	checkResponseFn      checkFn
+	method        string
+	path          string
+	requestBody   string
+	checkResponse checkFn
 }
 
 func runAPITests(t *testing.T, tests []apiTest) {
 	runAPITestsWithSetup(t, nil, tests)
 }
 
-func runAPITestsWithSetup(t *testing.T, runBefore setupAction, tests []apiTest) {
+func runAPITestsWithSetup(t *testing.T, setup setupAction, tests []apiTest) {
 	gateway, repository, cleanup := setupAPITests(t)
 	defer cleanup()
 
-	if runBefore != nil {
-		if err := runBefore(repository); err != nil {
-			t.Fatal("runBefore:", err)
+	if setup != nil {
+		if err := setup(repository); err != nil {
+			t.Fatal("setup:", err)
 		}
 	}
 
 	for _, test := range tests {
-		// Make request
-		respBody, respCode, err := httpRequest(gateway, test.method, test.path, test.requestBody)
+		resp, err := httpRequest(gateway, test.method, test.path, test.requestBody)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		// Assert correctness
-		if test.expectedResponseCode != respCode {
-			t.Fatal("Incorrect response code.\nWanted:", test.expectedResponseCode, "\nGot:", respCode)
-		}
-
-		test.checkResponseFn(t, respBody)
+		test.checkResponse(t, resp)
 	}
 }
 
@@ -105,14 +102,13 @@ func setupAPITests(t *testing.T) (*Gateway, *test.Repository, func()) {
 	}
 }
 
-func httpRequest(gateway *Gateway, method string, path string, body string) ([]byte, int, error) {
-	// Create a JSON request to the given endpoint
+func httpRequest(gateway *Gateway, method string, path string, body string) (*httptest.ResponseRecorder, error) {
+	// Create a request to the given endpoint
 	req, err := http.NewRequest(method, path, bytes.NewBufferString(body))
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	// Set headers/auth/cookie
 	req.Header.Add("Content-Type", "application/json")
 	req.SetBasicAuth("test", "test")
 	req.AddCookie(test.GetAuthCookie())
@@ -121,7 +117,7 @@ func httpRequest(gateway *Gateway, method string, path string, body string) ([]b
 	resp := httptest.NewRecorder()
 	gateway.handler.ServeHTTP(resp, req)
 
-	return resp.Body.Bytes(), resp.Code, nil
+	return resp, nil
 }
 
 func jsonFor(t *testing.T, fixture proto.Message) string {
@@ -132,4 +128,120 @@ func jsonFor(t *testing.T, fixture proto.Message) string {
 		t.Fatal(err)
 	}
 	return json
+}
+
+func checkIsSuccessJSONEqualTo(expected string) checkFn {
+	return func(t *testing.T, resp *httptest.ResponseRecorder) {
+		if resp.Code != 200 {
+			t.Fatal("Expected status code 200 but got:", resp.Code)
+		}
+
+		var responseJSON interface{}
+		err := json.Unmarshal(resp.Body.Bytes(), &responseJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var expectedJSON interface{}
+		err = json.Unmarshal([]byte(expected), &expectedJSON)
+		if err != nil {
+			fmt.Println(expected)
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(responseJSON, expectedJSON) {
+			t.Error("Incorrect response.\nWanted:", expected, "\nGot:", string(resp.Body.Bytes()))
+		}
+	}
+}
+
+func checkIsSuccessJSON(t *testing.T, resp *httptest.ResponseRecorder) {
+	if resp.Code != 200 {
+		t.Fatal("Expected status code 200 but got:", resp.Code)
+	}
+
+	var i interface{}
+	if err := json.Unmarshal(resp.Body.Bytes(), &i); err != nil {
+		t.Fatal("Response is not JSON:", string(resp.Body.Bytes()))
+	}
+}
+
+func checkIsErrorResponseJSON(errStr string) checkFn {
+	return func(t *testing.T, resp *httptest.ResponseRecorder) {
+		var responseJSON struct {
+			Success *bool  `json:"success"`
+			Reason  string `json:"reason"`
+		}
+
+		err := json.Unmarshal(resp.Body.Bytes(), &responseJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if responseJSON.Success == nil {
+			t.Fatal("success should be false but is not present")
+		}
+
+		if *responseJSON.Success {
+			t.Fatal("success should be false but is true")
+		}
+
+		if !strings.Contains(strings.ToLower(responseJSON.Reason), strings.ToLower(errStr)) {
+			t.Fatal(fmt.Sprintf("reason should have '%s' but it does not: %s", errStr, responseJSON.Reason))
+		}
+	}
+}
+
+func checkIsEmptyJSONObject(t *testing.T, resp *httptest.ResponseRecorder) {
+	if resp.Code != 200 {
+		t.Fatal("Expected status code 200 but got:", resp.Code)
+	}
+
+	respBodyStr := string(resp.Body.Bytes())
+	if respBodyStr != "{}" {
+		t.Fatal("Response is not empty JSON object:", respBodyStr)
+	}
+}
+
+func checkIsEmptyJSONArray(t *testing.T, resp *httptest.ResponseRecorder) {
+	if resp.Code != 200 {
+		t.Fatal("Expected status code 200 but got:", resp.Code)
+	}
+
+	respBodyStr := string(resp.Body.Bytes())
+	if respBodyStr != "[]" {
+		t.Fatal("Response is not empty JSON array:", respBodyStr)
+	}
+}
+
+func checkIs400Error(t *testing.T, resp *httptest.ResponseRecorder) {
+	if resp.Code < 400 || resp.Code >= 500 {
+		t.Fatal("Expected status code 4XX error but got:", resp.Code)
+	}
+}
+
+func checkIsNotFoundError(t *testing.T, resp *httptest.ResponseRecorder) {
+	if resp.Code != 404 {
+		t.Fatal("Expected status code 404 but got:", resp.Code)
+	}
+
+	checkIsErrorResponseJSON("not found")(t, resp)
+}
+
+func checkIsAlreadyExistsError(t *testing.T, resp *httptest.ResponseRecorder) {
+	if resp.Code != 409 {
+		t.Fatal("Expected status code 409 but got:", resp.Code)
+	}
+
+	checkIsErrorResponseJSON("already ")(t, resp)
+}
+
+func checkIs500Error(err error) checkFn {
+	return func(t *testing.T, resp *httptest.ResponseRecorder) {
+		if resp.Code < 500 || resp.Code >= 600 {
+			t.Fatal("Expected status code 5XX error but got:", resp.Code)
+		}
+
+		checkIsErrorResponseJSON(err.Error())(t, resp)
+	}
 }
