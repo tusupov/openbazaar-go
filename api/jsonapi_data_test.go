@@ -4,23 +4,12 @@ import (
 	"fmt"
 )
 
-const notFoundJSON = `{"success": false,"reason": "Not Found"}`
-
-const jsonUnexpectedEOF = `{"success": false,"reason": "unexpected EOF"}`
-
 // AlreadyExistsUsePUTJSON generates an error message expected when
 // attempted to recreate a resource
 func AlreadyExistsUsePUTJSON(resource string) string {
 	return fmt.Sprintf(`{
         "success": false,
         "reason": "%s already exists. Use PUT."
-    }`, resource)
-}
-
-func NotFoundJSON(resource string) string {
-	return fmt.Sprintf(`{
-        "success": false,
-        "reason": "%s not found."
     }`, resource)
 }
 
@@ -140,11 +129,6 @@ const settingsMalformedJSON = `{
     /"paymentDataInQR": false,
 }`
 
-const settingsMalformedJSONResponse = `{
-    "success": false,
-    "reason": "invalid character '/' looking for beginning of object key string"
-}`
-
 const settingsAlreadyExistsJSON = `{
     "success": false,
     "reason": "Settings is already set. Use PUT."
@@ -225,17 +209,7 @@ const avatarUnexpectedEOFJSON = `{
 	"avatar": "/9j/4AAQSkZJRgABAQAAAQABAA"
 }`
 
-const avatarUnexpectedEOFJSONResponse = `{
-    "success": false,
-    "reason": "unexpected EOF"
-}`
-
 var avatarInvalidTQJSON = avatarValidJSON[:100] + `0` + avatarValidJSON[100:]
-
-const avatarInvalidTQJSONResponse = `{
-    "success": false,
-    "reason": "invalid JPEG format: bad Tq value"
-}`
 
 const imageValidJSON = `[{
 	"filename": "blue_tshirt.jpg",
@@ -311,11 +285,6 @@ const spendJSON = `{
 	"address": "1HYhu8e2wv19LZ2umXoo1pMiwzy2rL32UQ",
 	"amount": 1700000,
 	"feeLevel": "NORMAL"
-}`
-
-const insuffientFundsJSON = `{
-	"success": false,
-	"reason": "ERROR_INSUFFICIENT_FUNDS"
 }`
 
 //
