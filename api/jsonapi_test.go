@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,34 +16,110 @@ import (
 	"github.com/OpenBazaar/openbazaar-go/test/factory"
 )
 
+func checkIsEqualJSON(expected string) checkFn {
+	return func(t *testing.T, respBody []byte) {
+		var responseJSON interface{}
+		err := json.Unmarshal(respBody, &responseJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var expectedJSON interface{}
+		err = json.Unmarshal([]byte(expected), &expectedJSON)
+		if err != nil {
+			fmt.Println(expected)
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(responseJSON, expectedJSON) {
+			t.Error("Incorrect response.\nWanted:", expected, "\nGot:", string(respBody))
+		}
+	}
+}
+
+func checkIsJSON(t *testing.T, respBody []byte) {
+	var i interface{}
+	if err := json.Unmarshal(respBody, &i); err != nil {
+		t.Fatal("Response is not JSON:", string(respBody))
+	}
+}
+
+func checkIsEmptyJSONObject(t *testing.T, respBody []byte) {
+	respBodyStr := string(respBody)
+	if respBodyStr != "{}" {
+		t.Fatal("Response is not empty JSON object:", respBodyStr)
+	}
+}
+
+func checkIsEmptyJSONArray(t *testing.T, respBody []byte) {
+	respBodyStr := string(respBody)
+	if respBodyStr != "[]" {
+		t.Fatal("Response is not empty JSON array:", respBodyStr)
+	}
+}
+
+func checkIsErrorResponseJSON(errStr string) checkFn {
+	return func(t *testing.T, respBody []byte) {
+		var responseJSON struct {
+			Success *bool  `json:"success"`
+			Reason  string `json:"reason"`
+		}
+
+		err := json.Unmarshal(respBody, &responseJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if responseJSON.Success == nil {
+			t.Fatal("success should be false but is not present")
+		}
+
+		if *responseJSON.Success {
+			t.Fatal("success should be false but is true")
+		}
+
+		if !strings.Contains(strings.ToLower(responseJSON.Reason), strings.ToLower(errStr)) {
+			t.Fatal(fmt.Sprintf("reason should have '%s' but it does not: %s", errStr, responseJSON.Reason))
+		}
+	}
+}
+
+func checkIsNotFoundError(t *testing.T, respBody []byte) {
+	checkIsErrorResponseJSON("not found")(t, respBody)
+}
+
+func checkIsAlreadyExistsError(t *testing.T, respBody []byte) {
+	checkIsErrorResponseJSON("already exists")(t, respBody)
+}
+
 func TestSettings(t *testing.T) {
 	t.Parallel()
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/settings", settingsJSON, 200, settingsJSON},
-		{"GET", "/ob/settings", "", 200, settingsJSON},
-		{"POST", "/ob/settings", settingsJSON, 409, settingsAlreadyExistsJSON},
-		{"PUT", "/ob/settings", settingsUpdateJSON, 200, "{}"},
-		{"GET", "/ob/settings", "", 200, settingsUpdateJSON},
-		{"PUT", "/ob/settings", settingsUpdateJSON, 200, "{}"},
-		{"GET", "/ob/settings", "", 200, settingsUpdateJSON},
-		{"PATCH", "/ob/settings", settingsPatchJSON, 200, "{}"},
-		{"GET", "/ob/settings", "", 200, settingsPatchedJSON},
+		{"POST", "/ob/settings", settingsJSON, 200, checkIsEqualJSON(settingsJSON)},
+		{"GET", "/ob/settings", "", 200, checkIsEqualJSON(settingsJSON)},
+		{"POST", "/ob/settings", settingsJSON, 409, checkIsEqualJSON(settingsAlreadyExistsJSON)},
+		{"PUT", "/ob/settings", settingsUpdateJSON, 200, checkIsEmptyJSONObject},
+		{"GET", "/ob/settings", "", 200, checkIsEqualJSON(settingsUpdateJSON)},
+		{"PUT", "/ob/settings", settingsUpdateJSON, 200, checkIsEmptyJSONObject},
+		{"GET", "/ob/settings", "", 200, checkIsEqualJSON(settingsUpdateJSON)},
+		{"PATCH", "/ob/settings", settingsPatchJSON, 200, checkIsEmptyJSONObject},
+		{"GET", "/ob/settings", "", 200, checkIsEqualJSON(settingsPatchedJSON)},
 	})
 }
 
 func TestSettingsInvalidPost(t *testing.T) {
 	t.Parallel()
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/settings", settingsMalformedJSON, 400, settingsMalformedJSONResponse},
+		{"POST", "/ob/settings", settingsMalformedJSON, 400, checkIsEqualJSON(settingsMalformedJSONResponse)},
 	})
 }
 
 func TestSettingsInvalidPut(t *testing.T) {
 	t.Parallel()
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/settings", settingsJSON, 200, settingsJSON},
-		{"GET", "/ob/settings", "", 200, settingsJSON},
-		{"PUT", "/ob/settings", settingsMalformedJSON, 400, settingsMalformedJSONResponse},
+		{"POST", "/ob/settings", settingsJSON, 200, checkIsEqualJSON(settingsJSON)},
+		{"GET", "/ob/settings", "", 200, checkIsEqualJSON(settingsJSON)},
+		{"PUT", "/ob/settings", settingsMalformedJSON, 400, checkIsEqualJSON(settingsMalformedJSONResponse)},
 	})
 }
 
@@ -50,10 +128,10 @@ func TestProfile(t *testing.T) {
 
 	// Create, Update
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/profile", profileJSON, 200, anyResponseJSON},
-		{"POST", "/ob/profile", profileJSON, 409, AlreadyExistsUsePUTJSON("Profile")},
-		{"PUT", "/ob/profile", profileUpdateJSON, 200, anyResponseJSON},
-		{"PUT", "/ob/profile", profileUpdatedJSON, 200, anyResponseJSON},
+		{"POST", "/ob/profile", profileJSON, 200, checkIsJSON},
+		{"POST", "/ob/profile", profileJSON, 409, checkIsAlreadyExistsError},
+		{"PUT", "/ob/profile", profileUpdateJSON, 200, checkIsJSON},
+		{"PUT", "/ob/profile", profileUpdatedJSON, 200, checkIsJSON},
 	})
 }
 
@@ -61,8 +139,8 @@ func TestAvatar(t *testing.T) {
 	t.Parallel()
 
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/profile", profileJSON, 200, anyResponseJSON},
-		{"POST", "/ob/avatar", avatarValidJSON, 200, avatarValidJSONResponse},
+		{"POST", "/ob/profile", profileJSON, 200, checkIsJSON},
+		{"POST", "/ob/avatar", avatarValidJSON, 200, checkIsEqualJSON(avatarValidJSONResponse)},
 	})
 }
 
@@ -70,7 +148,7 @@ func TestAvatarNoProfile(t *testing.T) {
 	t.Parallel()
 
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/avatar", avatarValidJSON, 500, anyResponseJSON},
+		{"POST", "/ob/avatar", avatarValidJSON, 500, checkIsJSON},
 	})
 }
 
@@ -78,8 +156,8 @@ func TestAvatarUnexpectedEOF(t *testing.T) {
 	t.Parallel()
 
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/profile", profileJSON, 200, anyResponseJSON},
-		{"POST", "/ob/avatar", avatarUnexpectedEOFJSON, 500, avatarUnexpectedEOFJSONResponse},
+		{"POST", "/ob/profile", profileJSON, 200, checkIsJSON},
+		{"POST", "/ob/avatar", avatarUnexpectedEOFJSON, 500, checkIsEqualJSON(avatarUnexpectedEOFJSONResponse)},
 	})
 }
 
@@ -87,8 +165,8 @@ func TestAvatarInvalidJSON(t *testing.T) {
 	t.Parallel()
 
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/profile", profileJSON, 200, anyResponseJSON},
-		{"POST", "/ob/avatar", avatarInvalidJSON, 500, avatarInvalidTQJSONResponse},
+		{"POST", "/ob/profile", profileJSON, 200, checkIsJSON},
+		{"POST", "/ob/avatar", avatarInvalidJSON, 500, checkIsEqualJSON(avatarInvalidTQJSONResponse)},
 	})
 }
 
@@ -97,7 +175,7 @@ func TestImages(t *testing.T) {
 
 	// Valid image
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/images", imageValidJSON, 200, imageValidJSONResponse},
+		{"POST", "/ob/images", imageValidJSON, 200, checkIsEqualJSON(imageValidJSONResponse)},
 	})
 }
 
@@ -105,8 +183,8 @@ func TestHeader(t *testing.T) {
 	t.Parallel()
 	// It succeeds if we have a profile and the image data is valid
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/profile", profileJSON, 200, anyResponseJSON},
-		{"POST", "/ob/header", headerValidJSON, 200, headerValidJSONResponse},
+		{"POST", "/ob/profile", profileJSON, 200, checkIsJSON},
+		{"POST", "/ob/header", headerValidJSON, 200, checkIsEqualJSON(headerValidJSONResponse)},
 	})
 }
 
@@ -115,7 +193,7 @@ func TestHeaderNoProfile(t *testing.T) {
 
 	// Setting an header fails if we don't have a profile
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/header", headerValidJSON, 500, anyResponseJSON},
+		{"POST", "/ob/header", headerValidJSON, 500, checkIsJSON},
 	})
 }
 
@@ -124,19 +202,19 @@ func TestModerator(t *testing.T) {
 
 	// Fails without profile
 	runAPITests(t, []apiTest{
-		{"PUT", "/ob/moderator", moderatorValidJSON, http.StatusConflict, anyResponseJSON},
+		{"PUT", "/ob/moderator", moderatorValidJSON, http.StatusConflict, checkIsJSON},
 	})
 
 	// Works with profile
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/profile", profileJSON, 200, anyResponseJSON},
+		{"POST", "/ob/profile", profileJSON, 200, checkIsJSON},
 
 		// TODO: Enable after fixing bug that requires peers in order to set moderator status
-		// {"PUT", "/ob/moderator", moderatorValidJSON, 200, `{}`},
+		// {"PUT", "/ob/moderator", moderatorValidJSON, 200, checkIsEmptyJSONObject},
 
 		// // Update
-		// {"PUT", "/ob/moderator", moderatorUpdatedValidJSON, 200, `{}`},
-		{"DELETE", "/ob/moderator", "", 200, `{}`},
+		// {"PUT", "/ob/moderator", moderatorUpdatedValidJSON, 200, checkIsEmptyJSONObject},
+		{"DELETE", "/ob/moderator", "", 200, checkIsEmptyJSONObject},
 	})
 }
 
@@ -156,47 +234,47 @@ func TestListings(t *testing.T) {
 	updatedListingJSON := jsonFor(t, updatedListing)
 
 	runAPITests(t, []apiTest{
-		{"GET", "/ob/listings", "", 200, `[]`},
-		{"GET", "/ob/inventory", "", 200, `{}`},
+		{"GET", "/ob/listings", "", 200, checkIsEmptyJSONArray},
+		{"GET", "/ob/inventory", "", 200, checkIsEmptyJSONObject},
 
 		// Invalid creates
-		{"POST", "/ob/listing", `{`, 400, jsonUnexpectedEOF},
+		{"POST", "/ob/listing", `{`, 400, checkIsErrorResponseJSON("unexpected EOF")},
 
-		{"GET", "/ob/listings", "", 200, `[]`},
-		{"GET", "/ob/inventory", "", 200, `{}`},
+		{"GET", "/ob/listings", "", 200, checkIsEmptyJSONArray},
+		{"GET", "/ob/inventory", "", 200, checkIsEmptyJSONObject},
 
 		// TODO: Add support for improved JSON matching to since contracts
 		// change each test run due to signatures
 
 		// Create/Get
-		{"GET", "/ob/listing/ron-swanson-tshirt", "", 404, NotFoundJSON("Listing")},
-		{"POST", "/ob/listing", goodListingJSON, 200, `{"slug": "ron-swanson-tshirt"}`},
-		{"GET", "/ob/listing/ron-swanson-tshirt", "", 200, anyResponseJSON},
-		{"POST", "/ob/listing", updatedListingJSON, 409, AlreadyExistsUsePUTJSON("Listing")},
+		{"GET", "/ob/listing/ron-swanson-tshirt", "", 404, checkIsNotFoundError},
+		{"POST", "/ob/listing", goodListingJSON, 200, checkIsEqualJSON(`{"slug": "ron-swanson-tshirt"}`)},
+		{"GET", "/ob/listing/ron-swanson-tshirt", "", 200, checkIsJSON},
+		{"POST", "/ob/listing", updatedListingJSON, 409, checkIsAlreadyExistsError},
 
 		// TODO: Add support for improved JSON matching to since contracts
 		// change each test run due to signatures
-		{"GET", "/ob/listings", "", 200, anyResponseJSON},
+		{"GET", "/ob/listings", "", 200, checkIsJSON},
 
 		// TODO: This returns `inventoryJSONResponse` but slices are unordered
 		// so they don't get considered equal. Figure out a way to fix that.
-		{"GET", "/ob/inventory", "", 200, anyResponseJSON},
+		{"GET", "/ob/inventory", "", 200, checkIsJSON},
 
 		// Update inventory
-		{"POST", "/ob/inventory", inventoryUpdateJSON, 200, `{}`},
+		{"POST", "/ob/inventory", inventoryUpdateJSON, 200, checkIsEmptyJSONObject},
 
 		// Update/Get Listing
-		{"PUT", "/ob/listing", updatedListingJSON, 200, `{}`},
-		{"GET", "/ob/listing/ron-swanson-tshirt", "", 200, anyResponseJSON},
+		{"PUT", "/ob/listing", updatedListingJSON, 200, checkIsEmptyJSONObject},
+		{"GET", "/ob/listing/ron-swanson-tshirt", "", 200, checkIsJSON},
 
 		// Delete/Get
-		{"DELETE", "/ob/listing/ron-swanson-tshirt", "", 200, `{}`},
-		{"DELETE", "/ob/listing/ron-swanson-tshirt", "", 404, NotFoundJSON("Listing")},
-		{"GET", "/ob/listing/ron-swanson-tshirt", "", 404, NotFoundJSON("Listing")},
+		{"DELETE", "/ob/listing/ron-swanson-tshirt", "", 200, checkIsEmptyJSONObject},
+		{"DELETE", "/ob/listing/ron-swanson-tshirt", "", 404, checkIsNotFoundError},
+		{"GET", "/ob/listing/ron-swanson-tshirt", "", 404, checkIsNotFoundError},
 
 		// Mutate non-existing listings
-		{"PUT", "/ob/listing", updatedListingJSON, 404, NotFoundJSON("Listing")},
-		{"DELETE", "/ob/listing/ron-swanson-tshirt", "", 404, NotFoundJSON("Listing")},
+		{"PUT", "/ob/listing", updatedListingJSON, 404, checkIsNotFoundError},
+		{"DELETE", "/ob/listing/ron-swanson-tshirt", "", 404, checkIsNotFoundError},
 	})
 }
 
@@ -207,16 +285,16 @@ func TestCryptoListings(t *testing.T) {
 	updatedListing := *listing
 
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 200, `{"slug": "crypto"}`},
-		{"GET", "/ob/listing/crypto", jsonFor(t, &updatedListing), 200, anyResponseJSON},
+		{"POST", "/ob/listing", jsonFor(t, listing), 200, checkIsEqualJSON(`{"slug": "crypto"}`)},
+		{"GET", "/ob/listing/crypto", jsonFor(t, &updatedListing), 200, checkIsJSON},
 
-		{"PUT", "/ob/listing", jsonFor(t, &updatedListing), 200, "{}"},
-		{"PUT", "/ob/listing", jsonFor(t, &updatedListing), 200, "{}"},
-		{"GET", "/ob/listing/crypto", jsonFor(t, &updatedListing), 200, anyResponseJSON},
+		{"PUT", "/ob/listing", jsonFor(t, &updatedListing), 200, checkIsEmptyJSONObject},
+		{"PUT", "/ob/listing", jsonFor(t, &updatedListing), 200, checkIsEmptyJSONObject},
+		{"GET", "/ob/listing/crypto", jsonFor(t, &updatedListing), 200, checkIsJSON},
 
-		{"DELETE", "/ob/listing/crypto", "", 200, `{}`},
-		{"DELETE", "/ob/listing/crypto", "", 404, NotFoundJSON("Listing")},
-		{"GET", "/ob/listing/crypto", "", 404, NotFoundJSON("Listing")},
+		{"DELETE", "/ob/listing/crypto", "", 200, checkIsEmptyJSONObject},
+		{"DELETE", "/ob/listing/crypto", "", 404, checkIsNotFoundError},
+		{"GET", "/ob/listing/crypto", "", 404, checkIsNotFoundError},
 	})
 }
 
@@ -231,28 +309,28 @@ func TestCryptoListingsPriceModifier(t *testing.T) {
 	listing := factory.NewCryptoListing("crypto")
 	listing.Metadata.PriceModifier = core.PriceModifierMax
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 200, `{"slug": "crypto"}`},
-		{"GET", "/ob/listing/crypto", jsonFor(t, listing), 200, anyResponseJSON},
+		{"POST", "/ob/listing", jsonFor(t, listing), 200, checkIsEqualJSON(`{"slug": "crypto"}`)},
+		{"GET", "/ob/listing/crypto", jsonFor(t, listing), 200, checkIsJSON},
 	})
 
 	listing.Metadata.PriceModifier = core.PriceModifierMax + 0.001
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 200, `{"slug": "crypto"}`},
+		{"POST", "/ob/listing", jsonFor(t, listing), 200, checkIsEqualJSON(`{"slug": "crypto"}`)},
 	})
 
 	listing.Metadata.PriceModifier = core.PriceModifierMax + 0.01
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 500, errorResponseJSON(outOfRangeErr)},
+		{"POST", "/ob/listing", jsonFor(t, listing), 500, checkIsErrorResponseJSON(outOfRangeErr.Error())},
 	})
 
 	listing.Metadata.PriceModifier = core.PriceModifierMin - 0.001
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 200, `{"slug": "crypto"}`},
+		{"POST", "/ob/listing", jsonFor(t, listing), 200, checkIsEqualJSON(`{"slug": "crypto"}`)},
 	})
 
 	listing.Metadata.PriceModifier = core.PriceModifierMin - 1
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 500, errorResponseJSON(outOfRangeErr)},
+		{"POST", "/ob/listing", jsonFor(t, listing), 500, checkIsErrorResponseJSON(outOfRangeErr.Error())},
 	})
 }
 
@@ -261,17 +339,17 @@ func TestListingsQuantity(t *testing.T) {
 
 	listing := factory.NewListing("crypto")
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 200, `{"slug": "crypto"}`},
+		{"POST", "/ob/listing", jsonFor(t, listing), 200, checkIsEqualJSON(`{"slug": "crypto"}`)},
 	})
 
 	listing.Item.Skus[0].Quantity = 0
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 200, anyResponseJSON},
+		{"POST", "/ob/listing", jsonFor(t, listing), 200, checkIsJSON},
 	})
 
 	listing.Item.Skus[0].Quantity = -1
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 200, anyResponseJSON},
+		{"POST", "/ob/listing", jsonFor(t, listing), 200, checkIsJSON},
 	})
 }
 
@@ -280,17 +358,17 @@ func TestCryptoListingsQuantity(t *testing.T) {
 
 	listing := factory.NewCryptoListing("crypto")
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 200, `{"slug": "crypto"}`},
+		{"POST", "/ob/listing", jsonFor(t, listing), 200, checkIsEqualJSON(`{"slug": "crypto"}`)},
 	})
 
 	listing.Item.Skus[0].Quantity = 0
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 500, errorResponseJSON(core.ErrCryptocurrencySkuQuantityInvalid)},
+		{"POST", "/ob/listing", jsonFor(t, listing), 500, checkIsErrorResponseJSON(core.ErrCryptocurrencySkuQuantityInvalid.Error())},
 	})
 
 	listing.Item.Skus[0].Quantity = -1
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 500, errorResponseJSON(core.ErrCryptocurrencySkuQuantityInvalid)},
+		{"POST", "/ob/listing", jsonFor(t, listing), 500, checkIsErrorResponseJSON(core.ErrCryptocurrencySkuQuantityInvalid.Error())},
 	})
 }
 
@@ -301,7 +379,7 @@ func TestCryptoListingsNoCoinType(t *testing.T) {
 	listing.Metadata.CoinType = ""
 
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 500, errorResponseJSON(core.ErrCryptocurrencyListingCoinTypeRequired)},
+		{"POST", "/ob/listing", jsonFor(t, listing), 500, checkIsErrorResponseJSON(core.ErrCryptocurrencyListingCoinTypeRequired.Error())},
 	})
 }
 
@@ -310,17 +388,17 @@ func TestCryptoListingsCoinDivisibilityIncorrect(t *testing.T) {
 
 	listing := factory.NewCryptoListing("crypto")
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 200, anyResponseJSON},
+		{"POST", "/ob/listing", jsonFor(t, listing), 200, checkIsJSON},
 	})
 
 	listing.Metadata.CoinDivisibility = 1e7
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 500, errorResponseJSON(core.ErrListingCoinDivisibilityIncorrect)},
+		{"POST", "/ob/listing", jsonFor(t, listing), 500, checkIsErrorResponseJSON(core.ErrListingCoinDivisibilityIncorrect.Error())},
 	})
 
 	listing.Metadata.CoinDivisibility = 0
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 500, errorResponseJSON(core.ErrListingCoinDivisibilityIncorrect)},
+		{"POST", "/ob/listing", jsonFor(t, listing), 500, checkIsErrorResponseJSON(core.ErrListingCoinDivisibilityIncorrect.Error())},
 	})
 }
 
@@ -329,7 +407,7 @@ func TestCryptoListingsIllegalFields(t *testing.T) {
 
 	runTest := func(listing *pb.Listing, err error) {
 		runAPITests(t, []apiTest{
-			{"POST", "/ob/listing", jsonFor(t, listing), 500, errorResponseJSON(err)},
+			{"POST", "/ob/listing", jsonFor(t, listing), 500, checkIsErrorResponseJSON(err.Error())},
 		})
 	}
 
@@ -364,7 +442,7 @@ func TestMarketRatePrice(t *testing.T) {
 	listing.Item.Price = 1
 
 	runAPITests(t, []apiTest{
-		{"POST", "/ob/listing", jsonFor(t, listing), 500, errorResponseJSON(core.ErrMarketPriceListingIllegalField("item.price"))},
+		{"POST", "/ob/listing", jsonFor(t, listing), 500, checkIsErrorResponseJSON(core.ErrMarketPriceListingIllegalField("item.price").Error())},
 	})
 }
 
@@ -372,8 +450,8 @@ func TestStatus(t *testing.T) {
 	t.Parallel()
 
 	runAPITests(t, []apiTest{
-		{"GET", "/ob/status", "", 400, anyResponseJSON},
-		{"GET", "/ob/status/QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", "", 200, anyResponseJSON},
+		{"GET", "/ob/status", "", 400, checkIsJSON},
+		{"GET", "/ob/status/QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", "", 200, checkIsJSON},
 	})
 }
 
@@ -381,11 +459,10 @@ func TestWallet(t *testing.T) {
 	t.Parallel()
 
 	runAPITests(t, []apiTest{
-		{"GET", "/wallet/address", "", 200, walletAddressJSONResponse},
-		{"GET", "/wallet/balance", "", 200, walletBalanceJSONResponse},
-		{"GET", "/wallet/mnemonic", "", 200, walletMnemonicJSONResponse},
-		{"POST", "/wallet/spend", spendJSON, 400, insuffientFundsJSON},
-		// TODO: Test successful spend on regnet with coins
+		{"GET", "/wallet/address", "", 200, checkIsEqualJSON(walletAddressJSONResponse)},
+		{"GET", "/wallet/balance", "", 200, checkIsEqualJSON(walletBalanceJSONResponse)},
+		{"GET", "/wallet/mnemonic", "", 200, checkIsEqualJSON(walletMnemonicJSONResponse)},
+		{"POST", "/wallet/spend", spendJSON, 400, checkIsEqualJSON(insuffientFundsJSON)},
 	})
 }
 
@@ -394,7 +471,7 @@ func TestConfig(t *testing.T) {
 
 	runAPITests(t, []apiTest{
 		// TODO: Need better JSON matching
-		{"GET", "/ob/config", "", 200, anyResponseJSON},
+		{"GET", "/ob/config", "", 200, checkIsJSON},
 	})
 }
 
@@ -403,11 +480,11 @@ func Test404(t *testing.T) {
 
 	// Test undefined endpoints
 	runAPITests(t, []apiTest{
-		{"GET", "/ob/a", "{}", 404, notFoundJSON},
-		{"PUT", "/ob/a", "{}", 404, notFoundJSON},
-		{"POST", "/ob/a", "{}", 404, notFoundJSON},
-		{"PATCH", "/ob/a", "{}", 404, notFoundJSON},
-		{"DELETE", "/ob/a", "{}", 404, notFoundJSON},
+		{"GET", "/ob/a", "{}", 404, checkIsNotFoundError},
+		{"PUT", "/ob/a", "{}", 404, checkIsNotFoundError},
+		{"POST", "/ob/a", "{}", 404, checkIsNotFoundError},
+		{"PATCH", "/ob/a", "{}", 404, checkIsNotFoundError},
+		{"DELETE", "/ob/a", "{}", 404, checkIsNotFoundError},
 	})
 }
 
@@ -415,40 +492,40 @@ func TestPosts(t *testing.T) {
 	t.Parallel()
 
 	runAPITests(t, []apiTest{
-		{"GET", "/ob/posts", "", 200, `[]`},
+		{"GET", "/ob/posts", "", 200, checkIsEmptyJSONArray},
 
 		// Invalid creates
-		{"POST", "/ob/post", `{`, 400, jsonUnexpectedEOF},
+		{"POST", "/ob/post", `{`, 400, checkIsErrorResponseJSON("unexpected EOF")},
 
-		{"GET", "/ob/posts", "", 200, `[]`},
+		{"GET", "/ob/posts", "", 200, checkIsEmptyJSONArray},
 
 		// Create/Get
-		{"GET", "/ob/post/test1", "", 404, NotFoundJSON("Post")},
-		{"POST", "/ob/post", postJSON, 200, postJSONResponse},
-		{"GET", "/ob/post/test1", "", 200, anyResponseJSON},
-		{"POST", "/ob/post", postUpdateJSON, 409, AlreadyExistsUsePUTJSON("Post")},
+		{"GET", "/ob/post/test1", "", 404, checkIsNotFoundError},
+		{"POST", "/ob/post", postJSON, 200, checkIsEqualJSON(postJSONResponse)},
+		{"GET", "/ob/post/test1", "", 200, checkIsJSON},
+		{"POST", "/ob/post", postUpdateJSON, 409, checkIsAlreadyExistsError},
 
-		{"GET", "/ob/posts", "", 200, anyResponseJSON},
+		{"GET", "/ob/posts", "", 200, checkIsJSON},
 
 		// Update/Get Post
-		{"PUT", "/ob/post", postUpdateJSON, 200, `{}`},
-		{"GET", "/ob/post/test1", "", 200, anyResponseJSON},
+		{"PUT", "/ob/post", postUpdateJSON, 200, checkIsEmptyJSONObject},
+		{"GET", "/ob/post/test1", "", 200, checkIsJSON},
 
 		// Delete/Get
-		{"DELETE", "/ob/post/test1", "", 200, `{}`},
-		{"DELETE", "/ob/post/test1", "", 404, NotFoundJSON("Post")},
-		{"GET", "/ob/post/test1", "", 404, NotFoundJSON("Post")},
+		{"DELETE", "/ob/post/test1", "", 200, checkIsEmptyJSONObject},
+		{"DELETE", "/ob/post/test1", "", 404, checkIsNotFoundError},
+		{"GET", "/ob/post/test1", "", 404, checkIsNotFoundError},
 
 		// Mutate non-existing listings
-		{"PUT", "/ob/post", postUpdateJSON, 404, NotFoundJSON("Post")},
-		{"DELETE", "/ob/post/test1", "", 404, NotFoundJSON("Post")},
+		{"PUT", "/ob/post", postUpdateJSON, 404, checkIsNotFoundError},
+		{"DELETE", "/ob/post/test1", "", 404, checkIsNotFoundError},
 	})
 }
 
 func TestCloseDisputeBlocksWhenExpired(t *testing.T) {
 	t.Parallel()
 
-	dbSetup := func(_ *Gateway, testRepo *test.Repository) error {
+	dbSetup := func(testRepo *test.Repository) error {
 		expired := factory.NewExpiredDisputeCaseRecord()
 		expired.CaseID = "expiredCase"
 		for _, r := range []*repo.DisputeCaseRecord{expired} {
@@ -462,9 +539,9 @@ func TestCloseDisputeBlocksWhenExpired(t *testing.T) {
 		return nil
 	}
 	expiredPostJSON := `{"orderId":"expiredCase","resolution":"","buyerPercentage":100.0,"vendorPercentage":0.0}`
-	runAPITestsWithSetup(t, []apiTest{
-		{"POST", "/ob/closedispute", expiredPostJSON, 400, anyResponseJSON},
-	}, dbSetup, nil)
+	runAPITestsWithSetup(t, dbSetup, []apiTest{
+		{"POST", "/ob/closedispute", expiredPostJSON, 400, checkIsJSON},
+	})
 }
 
 func TestZECSalesCannotReleaseEscrow(t *testing.T) {
@@ -472,15 +549,15 @@ func TestZECSalesCannotReleaseEscrow(t *testing.T) {
 
 	sale := factory.NewSaleRecord()
 	sale.Contract.VendorListings[0].Metadata.AcceptedCurrencies = []string{"ZEC"}
-	dbSetup := func(_ *Gateway, testRepo *test.Repository) error {
+	dbSetup := func(testRepo *test.Repository) error {
 		if err := testRepo.DB.Sales().Put(sale.OrderID, *sale.Contract, sale.OrderState, false); err != nil {
 			return err
 		}
 		return nil
 	}
-	runAPITestsWithSetup(t, []apiTest{
-		{"POST", "/ob/releaseescrow", fmt.Sprintf(`{"orderId":"%s"}`, sale.OrderID), 400, anyResponseJSON},
-	}, dbSetup, nil)
+	runAPITestsWithSetup(t, dbSetup, []apiTest{
+		{"POST", "/ob/releaseescrow", fmt.Sprintf(`{"orderId":"%s"}`, sale.OrderID), 400, checkIsJSON},
+	})
 }
 
 func TestSalesGet(t *testing.T) {
@@ -490,22 +567,15 @@ func TestSalesGet(t *testing.T) {
 	sale.Contract.VendorListings[0].Metadata.AcceptedCurrencies = []string{"BTC"}
 	sale.Contract.VendorListings[0].Metadata.CoinType = "ZEC"
 	sale.Contract.VendorListings[0].Metadata.ContractType = pb.Listing_Metadata_CRYPTOCURRENCY
-	dbSetup := func(_ *Gateway, testRepo *test.Repository) error {
+	dbSetup := func(testRepo *test.Repository) error {
 		return testRepo.DB.Sales().Put(sale.OrderID, *sale.Contract, sale.OrderState, false)
 	}
 
-	runAPITestsWithSetup(t, []apiTest{
-		{"GET", "/ob/sales", "", 200, anyResponseJSON},
-	}, dbSetup, func(gateway *Gateway, _ *test.Repository) error {
-
-		respBytes, _, err := httpRequest(gateway, "GET", "/ob/sales", "")
-		if err != nil {
-			t.Fatal(err)
-		}
+	checkNewSale := func(t *testing.T, respBody []byte) {
 		respObj := struct {
 			Sales []repo.Sale `json:"sales"`
 		}{}
-		err = json.Unmarshal(respBytes, &respObj)
+		err := json.Unmarshal(respBody, &respObj)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -536,7 +606,11 @@ func TestSalesGet(t *testing.T) {
 		if actualSale.State != sale.OrderState.String() {
 			t.Fatal("Incorrect state:", actualSale.State, "\nwanted:", sale.OrderState.String())
 		}
-		return nil
+
+	}
+
+	runAPITestsWithSetup(t, dbSetup, []apiTest{
+		{"GET", "/ob/sales", "", 200, checkNewSale},
 	})
 }
 func TestPurchasesGet(t *testing.T) {
@@ -546,21 +620,15 @@ func TestPurchasesGet(t *testing.T) {
 	purchase.Contract.VendorListings[0].Metadata.AcceptedCurrencies = []string{"BTC"}
 	purchase.Contract.VendorListings[0].Metadata.CoinType = "ZEC"
 	purchase.Contract.VendorListings[0].Metadata.ContractType = pb.Listing_Metadata_CRYPTOCURRENCY
-	dbSetup := func(_ *Gateway, testRepo *test.Repository) error {
+	dbSetup := func(testRepo *test.Repository) error {
 		return testRepo.DB.Purchases().Put(purchase.OrderID, *purchase.Contract, purchase.OrderState, false)
 	}
 
-	runAPITestsWithSetup(t, []apiTest{
-		{"GET", "/ob/purchases", "", 200, anyResponseJSON},
-	}, dbSetup, func(gateway *Gateway, _ *test.Repository) error {
-		respBytes, _, err := httpRequest(gateway, "GET", "/ob/purchases", "")
-		if err != nil {
-			t.Fatal(err)
-		}
+	checkNewPurchase := func(t *testing.T, respBody []byte) {
 		respObj := struct {
 			Purchases []repo.Purchase `json:"purchases"`
 		}{}
-		err = json.Unmarshal(respBytes, &respObj)
+		err := json.Unmarshal(respBody, &respObj)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -592,7 +660,10 @@ func TestPurchasesGet(t *testing.T) {
 			t.Fatal("Incorrect state:", actualPurchase.State, "\nwanted:", purchase.OrderState.String())
 		}
 
-		return nil
+	}
+
+	runAPITestsWithSetup(t, dbSetup, []apiTest{
+		{"GET", "/ob/purchases", "", 200, checkNewPurchase},
 	})
 }
 
@@ -605,21 +676,15 @@ func TestCasesGet(t *testing.T) {
 	disputeCaseRecord.BuyerContract.VendorListings[0].Metadata.ContractType = pb.Listing_Metadata_CRYPTOCURRENCY
 	disputeCaseRecord.CoinType = "ZEC"
 	disputeCaseRecord.PaymentCoin = "BTC"
-	dbSetup := func(_ *Gateway, testRepo *test.Repository) error {
+	dbSetup := func(testRepo *test.Repository) error {
 		return testRepo.DB.Cases().PutRecord(disputeCaseRecord)
 	}
 
-	runAPITestsWithSetup(t, []apiTest{
-		{"GET", "/ob/cases", "", 200, anyResponseJSON},
-	}, dbSetup, func(gateway *Gateway, _ *test.Repository) error {
-		respBytes, _, err := httpRequest(gateway, "GET", "/ob/cases", "")
-		if err != nil {
-			t.Fatal(err)
-		}
+	checkNewCase := func(t *testing.T, respBody []byte) {
 		respObj := struct {
 			Cases []repo.Case `json:"cases"`
 		}{}
-		err = json.Unmarshal(respBytes, &respObj)
+		err := json.Unmarshal(respBody, &respObj)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -635,7 +700,11 @@ func TestCasesGet(t *testing.T) {
 		if actualCase.State != disputeCaseRecord.OrderState.String() {
 			t.Fatal("Incorrect state:", actualCase.State, "\nwanted:", disputeCaseRecord.OrderState.String())
 		}
-		return nil
+
+	}
+
+	runAPITestsWithSetup(t, dbSetup, []apiTest{
+		{"GET", "/ob/cases", "", 200, checkNewCase},
 	})
 }
 
@@ -738,7 +807,7 @@ func TestNotificationsAreReturnedInExpectedOrder(t *testing.T) {
 			},
 		}
 	)
-	dbSetup := func(_ *Gateway, testRepo *test.Repository) error {
+	dbSetup := func(testRepo *test.Repository) error {
 		for _, n := range []*repo.Notification{notif1, notif2, notif3} {
 			if err := testRepo.DB.Notifications().PutRecord(n); err != nil {
 				return err
@@ -746,18 +815,11 @@ func TestNotificationsAreReturnedInExpectedOrder(t *testing.T) {
 		}
 		return nil
 	}
-	dbTeardown := func(_ *Gateway, testRepo *test.Repository) error {
-		for _, n := range []*repo.Notification{notif1, notif2, notif3} {
-			if err := testRepo.DB.Notifications().Delete(n.GetID()); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	runAPITestsWithSetup(t, []apiTest{
-		{"GET", "/ob/notifications?limit=-1", "", 200, sameTimestampsAreReturnedInReverse},
-		{"GET", "/ob/notifications?limit=-1&offsetId=notif3", "", 200, sameTimestampsAreReturnedInReverseAndRespectOffsetID},
-	}, dbSetup, dbTeardown)
+
+	runAPITestsWithSetup(t, dbSetup, []apiTest{
+		{"GET", "/ob/notifications?limit=-1", "", 200, checkIsEqualJSON(sameTimestampsAreReturnedInReverse)},
+		{"GET", "/ob/notifications?limit=-1&offsetId=notif3", "", 200, checkIsEqualJSON(sameTimestampsAreReturnedInReverseAndRespectOffsetID)},
+	})
 }
 
 // TODO: Make NewDisputeCaseRecord return a valid fixture for this valid case to work
@@ -777,7 +839,7 @@ func TestNotificationsAreReturnedInExpectedOrder(t *testing.T) {
 //}
 //nonexpiredPostJSON := `{"orderId":"nonexpiredCase","resolution":"","buyerPercentage":100.0,"vendorPercentage":0.0}`
 //runAPITestsWithSetup(t, []apiTest{
-//{"POST", "/ob/profile", moderatorProfileJSON, 200, anyResponseJSON},
-//{"POST", "/ob/closedispute", nonexpiredPostJSON, 200, anyResponseJSON},
+//{"POST", "/ob/profile", moderatorProfileJSON, 200, checkIsJSON},
+//{"POST", "/ob/closedispute", nonexpiredPostJSON, 200, checkIsJSON},
 //}, dbSetup, nil)
 //}
