@@ -33,6 +33,7 @@ func NewNode(repository *Repository) (*core.OpenBazaarNode, error) {
 		Logger:    NewLogger(),
 	}
 
+	spvwallet.LOOKAHEADWINDOW = 1
 	wallet, err := spvwallet.NewSPVWallet(spvwalletConfig)
 	if err != nil {
 		return nil, err

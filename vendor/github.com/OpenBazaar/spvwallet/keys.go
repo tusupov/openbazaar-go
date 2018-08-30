@@ -7,7 +7,7 @@ import (
 	"github.com/btcsuite/goleveldb/leveldb/errors"
 )
 
-const LOOKAHEADWINDOW = 100
+var LOOKAHEADWINDOW = 100
 
 type KeyManager struct {
 	datastore wallet.Keys
