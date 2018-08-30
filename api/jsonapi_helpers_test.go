@@ -2,10 +2,8 @@ package api
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 
 	"github.com/OpenBazaar/jsonpb"
@@ -20,8 +18,50 @@ import (
 	"github.com/op/go-logging"
 )
 
-// anyResponseJSON is a sentinel denoting any valid JSON response body is valid
-const anyResponseJSON = "__anyresponsebodyJSON__"
+// setupAction is used to change state before and after a set of []apiTest
+type setupAction func(*test.Repository) error
+
+type checkFn func(t *testing.T, respBody []byte)
+
+// apiTest is a test case to be run against the api blackbox
+type apiTest struct {
+	method      string
+	path        string
+	requestBody string
+
+	expectedResponseCode int
+	checkResponseFn      checkFn
+}
+
+func runAPITests(t *testing.T, tests []apiTest) {
+	runAPITestsWithSetup(t, nil, tests)
+}
+
+func runAPITestsWithSetup(t *testing.T, runBefore setupAction, tests []apiTest) {
+	gateway, repository, cleanup := setupAPITests(t)
+	defer cleanup()
+
+	if runBefore != nil {
+		if err := runBefore(repository); err != nil {
+			t.Fatal("runBefore:", err)
+		}
+	}
+
+	for _, test := range tests {
+		// Make request
+		respBody, respCode, err := httpRequest(gateway, test.method, test.path, test.requestBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Assert correctness
+		if test.expectedResponseCode != respCode {
+			t.Fatal("Incorrect response code.\nWanted:", test.expectedResponseCode, "\nGot:", respCode)
+		}
+
+		test.checkResponseFn(t, respBody)
+	}
+}
 
 // setupAPITests starts a new API gateway listening on the default test interface
 func setupAPITests(t *testing.T) (*Gateway, *test.Repository, func()) {
@@ -65,88 +105,11 @@ func setupAPITests(t *testing.T) (*Gateway, *test.Repository, func()) {
 	}
 }
 
-// apiTest is a test case to be run against the api blackbox
-type apiTest struct {
-	method      string
-	path        string
-	requestBody string
-
-	expectedResponseCode int
-	expectedResponseBody string
-}
-
-// setupAction is used to change state before and after a set of []apiTest
-type setupAction func(*Gateway, *test.Repository) error
-
-func runAPITests(t *testing.T, tests []apiTest) {
-	gateway, _, cleanup := setupAPITests(t)
-	defer cleanup()
-
-	for _, jsonAPITest := range tests {
-		executeAPITest(t, gateway, jsonAPITest)
-	}
-}
-
-func runAPITestsWithSetup(t *testing.T, tests []apiTest, runBefore, runAfter setupAction) {
-	gateway, repository, cleanup := setupAPITests(t)
-	defer cleanup()
-
-	if runBefore != nil {
-		if err := runBefore(gateway, repository); err != nil {
-			t.Fatal("runBefore:", err)
-		}
-	}
-
-	for _, jsonAPITest := range tests {
-		executeAPITest(t, gateway, jsonAPITest)
-	}
-
-	if runAfter != nil {
-		if err := runAfter(gateway, repository); err != nil {
-			t.Fatal("runAfter:", err)
-		}
-	}
-}
-
-// executeAPITest executes the given test against the blackbox
-func executeAPITest(t *testing.T, gateway *Gateway, test apiTest) {
-	// Make request
-	respBody, respCode, err := httpRequest(gateway, test.method, test.path, test.requestBody)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Parse response as JSON
-	var responseJSON interface{}
-	err = json.Unmarshal(respBody, &responseJSON)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Assert correctness
-	if test.expectedResponseCode != respCode {
-		t.Fatal("Incorrect response code.\nWanted:", test.expectedResponseCode, "\nGot:", respCode)
-	}
-
-	if test.expectedResponseBody != anyResponseJSON {
-		var expectedJSON interface{}
-		err = json.Unmarshal([]byte(test.expectedResponseBody), &expectedJSON)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !reflect.DeepEqual(responseJSON, expectedJSON) {
-			t.Error("Incorrect response.\nWanted:", test.expectedResponseBody, "\nGot:", string(respBody))
-		}
-	}
-}
-
-// buildRequest creates an api request
-func buildRequest(method string, path string, body string) (*http.Request, error) {
+func httpRequest(gateway *Gateway, method string, path string, body string) ([]byte, int, error) {
 	// Create a JSON request to the given endpoint
 	req, err := http.NewRequest(method, path, bytes.NewBufferString(body))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Set headers/auth/cookie
@@ -154,16 +117,8 @@ func buildRequest(method string, path string, body string) (*http.Request, error
 	req.SetBasicAuth("test", "test")
 	req.AddCookie(test.GetAuthCookie())
 
-	return req, nil
-}
-
-func httpRequest(gateway *Gateway, method string, endpoint string, body string) ([]byte, int, error) {
-	req, err := buildRequest(method, endpoint, body)
-	if err != nil {
-		return nil, 0, err
-	}
+	// Send to handler and return response data
 	resp := httptest.NewRecorder()
-
 	gateway.handler.ServeHTTP(resp, req)
 
 	return resp.Body.Bytes(), resp.Code, nil
@@ -177,8 +132,4 @@ func jsonFor(t *testing.T, fixture proto.Message) string {
 		t.Fatal(err)
 	}
 	return json
-}
-
-func errorResponseJSON(err error) string {
-	return `{"success": false, "reason": "` + err.Error() + `"}`
 }

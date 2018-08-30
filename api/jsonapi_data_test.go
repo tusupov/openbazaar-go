@@ -4,23 +4,12 @@ import (
 	"fmt"
 )
 
-const notFoundJSON = `{"success": false,"reason": "Not Found"}`
-
-const jsonUnexpectedEOF = `{"success": false,"reason": "unexpected EOF"}`
-
 // AlreadyExistsUsePUTJSON generates an error message expected when
 // attempted to recreate a resource
 func AlreadyExistsUsePUTJSON(resource string) string {
 	return fmt.Sprintf(`{
         "success": false,
         "reason": "%s already exists. Use PUT."
-    }`, resource)
-}
-
-func NotFoundJSON(resource string) string {
-	return fmt.Sprintf(`{
-        "success": false,
-        "reason": "%s not found."
     }`, resource)
 }
 
