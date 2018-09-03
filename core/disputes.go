@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -882,7 +881,7 @@ func (n *OpenBazaarNode) ValidateCaseContract(contract *pb.RicardianContract) []
 
 		// TODO: the bitcoin cash check is temporary in case someone files a dispute for an order that was created when the prefix was still being used
 		// on the address. We can remove this 45 days after the release of 2.2.2 as it wont be possible for this condition to exist at this point.
-		if contract.BuyerOrder.Payment.Address != addr.EncodeAddress() && contract.BuyerOrder.Payment.Address != n.normalizeBitcoinCashAddress(addr.EncodeAddress()) {
+		if contract.BuyerOrder.Payment.Address != addr.EncodeAddress() && contract.BuyerOrder.Payment.Address != addr.EncodeAddress() {
 			validationErrors = append(validationErrors, "The calculated bitcoin address doesn't match the address in the order")
 		}
 
@@ -1087,17 +1086,3 @@ func (n *OpenBazaarNode) ReleaseFunds(contract *pb.RicardianContract, records []
 	return nil
 }
 
-func (n *OpenBazaarNode) normalizeBitcoinCashAddress(addr string) string {
-	if NormalizeCurrencyCode(n.Wallet.CurrencyCode()) == "BCH" || NormalizeCurrencyCode(n.Wallet.CurrencyCode()) == "TBCH" {
-		prefix := "bitcoincash:"
-		if n.TestnetEnable {
-			prefix = "bchtest:"
-		} else if n.RegressionTestEnable {
-			prefix = "bchreg:"
-		}
-		if !strings.HasPrefix(addr, prefix) {
-			return prefix + addr
-		}
-	}
-	return addr
-}

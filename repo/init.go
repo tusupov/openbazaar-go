@@ -179,15 +179,6 @@ func addConfigExtensions(repoRoot string) error {
 				MediumFeeDefault: 10,
 				LowFeeDefault:    1,
 			},
-			BCH: schema.CoinConfig{
-				Type:             "API",
-				API:              "https://bch-insight.bitpay.com/api",
-				APITestnet:       "https://test-bch-insight.bitpay.com/api",
-				MaxFee:           200,
-				HighFeeDefault:   10,
-				MediumFeeDefault: 5,
-				LowFeeDefault:    1,
-			},
 			LTC: schema.CoinConfig{
 				Type:             "API",
 				API:              "https://insight.litecore.io/api",

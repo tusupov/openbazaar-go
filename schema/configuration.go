@@ -42,7 +42,6 @@ type WalletConfig struct {
 
 type WalletsConfig struct {
 	BTC CoinConfig `json:"BTC"`
-	BCH CoinConfig `json:"BCH"`
 	LTC CoinConfig `json:"LTC"`
 	ZEC CoinConfig `json:"ZEC"`
 }

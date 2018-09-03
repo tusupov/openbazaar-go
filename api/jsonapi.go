@@ -1014,6 +1014,8 @@ func (i *jsonAPIHandler) GETExchangeRate(w http.ResponseWriter, r *http.Request)
 	_, currencyCode := path.Split(r.URL.Path)
 	if currencyCode == "" || strings.ToLower(currencyCode) == "exchangerate" {
 		currencyMap, err := i.node.ExchangeRates.GetAllRates(true)
+		// Remove "BCH" from currency list
+		delete(currencyMap, "BCH")
 		if err != nil {
 			ErrorResponse(w, http.StatusInternalServerError, err.Error())
 			return

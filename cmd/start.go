@@ -40,8 +40,6 @@ import (
 	wi "github.com/OpenBazaar/wallet-interface"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil/base58"
-	"github.com/cpacia/BitcoinCash-Wallet"
-	cashrates "github.com/cpacia/BitcoinCash-Wallet/exchangerates"
 	"github.com/fatih/color"
 	"github.com/ipfs/go-ipfs/commands"
 	ipfscore "github.com/ipfs/go-ipfs/core"
@@ -112,7 +110,6 @@ type Start struct {
 	DisableWallet        bool     `long:"disablewallet" description:"disable the wallet functionality of the node"`
 	DisableExchangeRates bool     `long:"disableexchangerates" description:"disable the exchange rate service to prevent api queries"`
 	Storage              string   `long:"storage" description:"set the outgoing message storage option [self-hosted, dropbox] default=self-hosted"`
-	BitcoinCash          bool     `long:"bitcoincash" description:"use a Bitcoin Cash wallet in a dedicated data directory"`
 	ZCash                string   `long:"zcash" description:"use a ZCash wallet in a dedicated data directory. To use this you must pass in the location of the zcashd binary."`
 }
 
@@ -131,18 +128,13 @@ func (x *Start) Execute(args []string) error {
 	if x.Testnet || x.Regtest {
 		isTestnet = true
 	}
-	if x.BitcoinCash && x.ZCash != "" {
-		return errors.New("Bitcoin Cash and ZCash cannot be used at the same time")
-	}
 
 	// Set repo path
 	repoPath, err := repo.GetRepoPath(isTestnet)
 	if err != nil {
 		return err
 	}
-	if x.BitcoinCash {
-		repoPath += "-bitcoincash"
-	} else if x.ZCash != "" {
+	if x.ZCash != "" {
 		repoPath += "-zcash"
 	}
 	if x.DataDir != "" {
@@ -222,16 +214,12 @@ func (x *Start) Execute(args []string) error {
 		wcfg, err := schema.GetWalletConfig(cfgf)
 		if err == nil {
 			switch wcfg.Type {
-			case "bitcoincash":
-				ct = wi.BitcoinCash
 			case "zcashd":
 				ct = wi.Zcash
 			}
 		}
 	}
-	if x.BitcoinCash {
-		ct = wi.BitcoinCash
-	} else if x.ZCash != "" {
+	if x.ZCash != "" {
 		ct = wi.Zcash
 	}
 
@@ -307,9 +295,7 @@ func (x *Start) Execute(args []string) error {
 		return err
 	}
 
-	if x.BitcoinCash {
-		walletCfg.Type = "bitcoincash"
-	} else if x.ZCash != "" {
+	if x.ZCash != "" {
 		walletCfg.Type = "zcashd"
 		walletCfg.Binary = x.ZCash
 	}
@@ -550,14 +536,12 @@ func (x *Start) Execute(args []string) error {
 	} else {
 		params = chaincfg.MainNetParams
 	}
-	if x.Regtest && (strings.ToLower(walletCfg.Type) == "spvwallet" || strings.ToLower(walletCfg.Type) == "bitcoincash") && walletCfg.TrustedPeer == "" {
+	if x.Regtest && strings.ToLower(walletCfg.Type) == "spvwallet" && walletCfg.TrustedPeer == "" {
 		return errors.New("Trusted peer must be set if using regtest with the spvwallet")
 	}
 
 	// Wallet setup
-	if x.BitcoinCash {
-		walletCfg.Type = "bitcoincash"
-	} else if x.ZCash != "" {
+	if x.ZCash != "" {
 		walletCfg.Type = "zcashd"
 		walletCfg.Binary = x.ZCash
 	}
@@ -565,6 +549,7 @@ func (x *Start) Execute(args []string) error {
 	if !x.DisableExchangeRates {
 		exchangeRates = exchange.NewBitcoinPriceFetcher(torDialer)
 	}
+
 	var w3 io.Writer
 	if x.NoLogFiles {
 		w3 = &DummyWriter{}
@@ -616,45 +601,6 @@ func (x *Start) Execute(args []string) error {
 			Logger:       ml,
 		}
 		cryptoWallet, err = spvwallet.NewSPVWallet(spvwalletConfig)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		resyncManager = resync.NewResyncManager(sqliteDB.Sales(), cryptoWallet)
-	case "bitcoincash":
-		walletTypeStr = "bitcoin cash spv"
-		var tp net.Addr
-		if walletCfg.TrustedPeer != "" {
-			tp, err = net.ResolveTCPAddr("tcp", walletCfg.TrustedPeer)
-			if err != nil {
-				log.Error(err)
-				return err
-			}
-		}
-		feeAPI, err := url.Parse(walletCfg.FeeAPI)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		exchangeRates = cashrates.NewBitcoinCashPriceFetcher(torDialer)
-		spvwalletConfig := &bitcoincash.Config{
-			Mnemonic:             mn,
-			Params:               &params,
-			MaxFee:               uint64(walletCfg.MaxFee),
-			LowFee:               uint64(walletCfg.LowFeeDefault),
-			MediumFee:            uint64(walletCfg.MediumFeeDefault),
-			HighFee:              uint64(walletCfg.HighFeeDefault),
-			FeeAPI:               *feeAPI,
-			RepoPath:             repoPath,
-			CreationDate:         creationDate,
-			DB:                   sqliteDB,
-			UserAgent:            "OpenBazaar",
-			TrustedPeer:          tp,
-			Proxy:                torDialer,
-			Logger:               ml,
-			ExchangeRateProvider: exchangeRates,
-		}
-		cryptoWallet, err = bitcoincash.NewSPVWallet(spvwalletConfig)
 		if err != nil {
 			log.Error(err)
 			return err

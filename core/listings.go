@@ -1271,6 +1271,8 @@ func validateCryptocurrencyListing(listing *pb.Listing) error {
 		return ErrCryptocurrencyListingIllegalField("item.condition")
 	case len(listing.Metadata.PricingCurrency) > 0:
 		return ErrCryptocurrencyListingIllegalField("metadata.pricingCurrency")
+	case strings.ToLower(listing.Metadata.CoinType) == "bch":
+		return ErrCryptocurrencyListingIllegalField("Currency `BCH` not tracked")
 	case listing.Metadata.CoinType == "":
 		return ErrCryptocurrencyListingCoinTypeRequired
 	}

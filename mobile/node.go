@@ -103,8 +103,6 @@ func NewNode(config NodeConfig) (*Node, error) {
 
 	ct := wi.Bitcoin
 	switch walletCfg.Type {
-	case "bitcoincash":
-		ct = wi.BitcoinCash
 	case "zcashd":
 		ct = wi.Zcash
 	}
